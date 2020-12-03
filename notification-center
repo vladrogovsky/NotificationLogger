@@ -1,0 +1,87 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import glib
+import dbus
+from time import localtime, strftime
+from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import Gtk as gtk
+from gi.repository import AppIndicator3 as appindicator
+import signal,sys,os
+from threading import Thread
+
+
+def save_notification(notification):
+	currenttime = strftime("%Y-%m-%d %H:%M:%S", localtime())
+	print(currenttime)
+	f = open("notifications.txt","a+")
+	f.write("["+currenttime+"]"+'\n')
+	f.write("app-name: "+notification["app_name"]+'\n')
+	f.write("title: "+notification["summary"]+'\n')
+	f.write("body: "+notification["body"]+'\n')
+	f.write("icon: "+notification["app_icon"]+'\n')
+	f.close()
+	test = menu_item(str(notification["app_icon"]),str(notification["app_name"]),str(notification["summary"]),str(notification["body"]))
+	build_menu(test)
+
+def print_notification(bus, message):
+	keys = ["app_name", "replaces_id", "app_icon", "summary",
+			"body", "actions", "hints", "expire_timeout"]
+	args = message.get_args_list()
+	if len(args) == 8:
+		notification = dict([(keys[i], args[i]) for i in range(8)])
+		save_notification(notification)
+
+def notification_loop():
+	loop = DBusGMainLoop(set_as_default=True)
+	session_bus = dbus.SessionBus()
+	session_bus.add_match_string("type='method_call',interface='org.freedesktop.Notifications',member='Notify',eavesdrop=true")
+	session_bus.add_message_filter(print_notification)
+	#glib.MainLoop().run()
+
+APPINDICATOR_ID = 'notifications-2.0'
+
+def menu_item(img,app,title,body,function=False):
+	currenttime = strftime("%Y-%m-%d %H:%M:%S", localtime())
+	icon = gtk.Image()
+	icon.set_from_file(os.path.abspath(img))
+	new = gtk.ImageMenuItem("")
+	new.set_image(icon)
+	new.set_always_show_image(True)
+	label = new.get_children()[0]
+	label.set_markup(str(title)+"\n"+str(body)+"\n["+str(app)+" : "+str(currenttime)+"]")
+	label.set_use_markup(True)
+	return new
+
+def build_menu(addMenu=False):
+	if (addMenu == False):
+		menu = gtk.Menu()
+		item_quit = gtk.MenuItem('Quit')
+		item_quit.connect('activate', quit)
+		menu.append(item_quit)
+		#test = menu_item(os.path.abspath('notify.png'),'app','title','body')
+		#menu.append(test)
+		menu.show_all()
+		return menu
+	else:
+		menu.append(addMenu)
+		menu.show_all()
+		return menu
+
+
+def quit(source):
+	gtk.main_quit()
+	sys.exit()
+
+def main():
+	indicator = appindicator.Indicator.new(APPINDICATOR_ID, os.path.abspath('notify.png'), appindicator.IndicatorCategory.SYSTEM_SERVICES)
+	#indicator.set_icon()
+	indicator.set_status(appindicator.IndicatorStatus.ACTIVE)
+	indicator.set_menu(build_menu())
+	gtk.main()
+
+if __name__ == "__main__":
+	signal.signal(signal.SIGINT, signal.SIG_DFL)
+	while True:
+		notification_loop()
+		main()
+		pass
